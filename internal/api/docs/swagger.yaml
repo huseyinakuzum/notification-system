@@ -1,0 +1,385 @@
+basePath: /
+definitions:
+  api.batchView:
+    properties:
+      batch_id:
+        format: uuid
+        type: string
+      counts:
+        additionalProperties:
+          type: integer
+        type: object
+      items:
+        items:
+          $ref: '#/definitions/api.notificationView'
+        type: array
+      total:
+        type: integer
+    type: object
+  api.createItem:
+    properties:
+      channel:
+        $ref: '#/definitions/models.Channel'
+      content:
+        type: string
+      priority:
+        $ref: '#/definitions/models.Priority'
+      recipient:
+        type: string
+      scheduled_at:
+        type: string
+      template_id:
+        format: uuid
+        type: string
+      template_vars:
+        additionalProperties:
+          type: string
+        type: object
+    type: object
+  api.createResponse:
+    properties:
+      batch_id:
+        format: uuid
+        type: string
+      ids:
+        items:
+          type: string
+        type: array
+    type: object
+  api.deliveryView:
+    properties:
+      attempts:
+        type: integer
+      last_error:
+        type: string
+      max_attempts:
+        type: integer
+      provider_message_id:
+        type: string
+      sent_at:
+        type: string
+      status:
+        $ref: '#/definitions/models.Status'
+    type: object
+  api.notificationView:
+    properties:
+      batch_id:
+        format: uuid
+        type: string
+      channel:
+        $ref: '#/definitions/models.Channel'
+      created_at:
+        type: string
+      delivery:
+        $ref: '#/definitions/api.deliveryView'
+      id:
+        format: uuid
+        type: string
+      priority:
+        $ref: '#/definitions/models.Priority'
+      recipient:
+        type: string
+      scheduled_at:
+        type: string
+      status:
+        $ref: '#/definitions/models.Status'
+    type: object
+  api.templateCreateRequest:
+    properties:
+      body:
+        type: string
+      channel:
+        $ref: '#/definitions/models.Channel'
+      name:
+        type: string
+    type: object
+  models.Channel:
+    enum:
+    - sms
+    - email
+    - push
+    type: string
+    x-enum-varnames:
+    - ChannelSMS
+    - ChannelEmail
+    - ChannelPush
+  models.Priority:
+    enum:
+    - high
+    - normal
+    - low
+    type: string
+    x-enum-varnames:
+    - PriorityHigh
+    - PriorityNormal
+    - PriorityLow
+  models.Status:
+    enum:
+    - pending
+    - processing
+    - sent
+    - failed
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - StatusPending
+    - StatusProcessing
+    - StatusSent
+    - StatusFailed
+    - StatusCancelled
+info:
+  contact: {}
+  description: 'Event-driven notification system: REST ingest, scheduling, and delivery
+    status.'
+  title: Notification System API
+  version: "1.0"
+paths:
+  /notifications:
+    get:
+      parameters:
+      - description: Filter by status
+        enum:
+        - pending
+        - processing
+        - sent
+        - failed
+        - cancelled
+        in: query
+        name: status
+        type: string
+      - description: Filter by channel
+        enum:
+        - sms
+        - email
+        - push
+        in: query
+        name: channel
+        type: string
+      - description: From timestamp (RFC3339)
+        in: query
+        name: from
+        type: string
+      - description: To timestamp (RFC3339)
+        in: query
+        name: to
+        type: string
+      - description: Max items (1-200, default 50)
+        in: query
+        name: limit
+        type: integer
+      - description: Result offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List notifications
+      tags:
+      - notifications
+    post:
+      consumes:
+      - application/json
+      description: Accepts a single create item or a JSON array of them; renders templates,
+        validates, persists idempotently.
+      parameters:
+      - description: Notification to create (send a JSON array for batches)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.createItem'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.createResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create notifications
+      tags:
+      - notifications
+  /notifications/{id}:
+    delete:
+      parameters:
+      - description: Raw notification ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Cancel a pending notification
+      tags:
+      - notifications
+    get:
+      parameters:
+      - description: Raw notification ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.notificationView'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a notification by ID
+      tags:
+      - notifications
+  /notifications/batch/{batchId}:
+    get:
+      parameters:
+      - description: Batch ID
+        format: uuid
+        in: path
+        name: batchId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.batchView'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a batch with per-status counts
+      tags:
+      - notifications
+  /templates:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Template to create
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.templateCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a template
+      tags:
+      - templates
+  /templates/{name}:
+    get:
+      parameters:
+      - description: Template name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a template by name
+      tags:
+      - templates
+schemes:
+- http
+swagger: "2.0"
