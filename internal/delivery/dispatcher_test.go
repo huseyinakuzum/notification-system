@@ -50,8 +50,8 @@ type fakeSender struct{ result SendResult }
 func (f fakeSender) Send(context.Context, models.Notification) SendResult { return f.result }
 
 type fakeDLQ struct {
-	calls   int
-	reason  string
+	calls  int
+	reason string
 }
 
 func (f *fakeDLQ) Produce(_ context.Context, _ models.Notification, reason string) error {
@@ -76,13 +76,13 @@ func newTestDispatcher(store claimStore, sender sender, dlq dlqProducer) *dispat
 	}
 }
 
-func claimedNotification(attempts, max int) models.Notification {
+func claimedNotification(attempts, maxAttempts int) models.Notification {
 	return models.Notification{
 		ID:          uuid.New(),
 		Channel:     models.ChannelSMS,
 		Status:      models.StatusProcessing,
 		Attempts:    attempts,
-		MaxAttempts: max,
+		MaxAttempts: maxAttempts,
 	}
 }
 

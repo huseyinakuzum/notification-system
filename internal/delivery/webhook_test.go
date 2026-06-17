@@ -15,13 +15,13 @@ func TestClassify(t *testing.T) {
 		status int
 		want   Outcome
 	}{
-		{http.StatusAccepted, OutcomeSent},     // 202
-		{http.StatusTooManyRequests, OutcomeRetry}, // 429
-		{http.StatusBadRequest, OutcomeFatal},   // 400
-		{http.StatusNotFound, OutcomeFatal},     // 404
+		{http.StatusAccepted, OutcomeSent},             // 202
+		{http.StatusTooManyRequests, OutcomeRetry},     // 429
+		{http.StatusBadRequest, OutcomeFatal},          // 400
+		{http.StatusNotFound, OutcomeFatal},            // 404
 		{http.StatusInternalServerError, OutcomeRetry}, // 500
-		{http.StatusBadGateway, OutcomeRetry},   // 502
-		{http.StatusOK, OutcomeRetry},           // unexpected 2xx that isn't 202
+		{http.StatusBadGateway, OutcomeRetry},          // 502
+		{http.StatusOK, OutcomeRetry},                  // unexpected 2xx that isn't 202
 	}
 	for _, c := range cases {
 		if got := classify(c.status); got != c.want {
@@ -39,7 +39,7 @@ func testNotification() models.Notification {
 }
 
 func TestWebhookSendSuccess(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(`{"messageId":"abc-123","status":"queued","timestamp":"2026-06-17T00:00:00Z"}`))
 	}))
@@ -56,7 +56,7 @@ func TestWebhookSendSuccess(t *testing.T) {
 }
 
 func TestWebhookSendFatal(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer srv.Close()
@@ -69,7 +69,7 @@ func TestWebhookSendFatal(t *testing.T) {
 }
 
 func TestWebhookSendRetryOn5xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer srv.Close()

@@ -1,0 +1,37 @@
+# Single notification lifecycle.
+# VS Code REST Client / IntelliJ HTTP client format.
+# Set @id from the create response, then run the get/cancel below.
+
+@host = http://localhost:8080
+
+### Create a single notification
+# @name createSingle
+POST {{host}}/notifications
+Content-Type: application/json
+
+[
+  {
+    "recipient": "me@example.com",
+    "channel": "email",
+    "content": "hello from the http client",
+    "priority": "high"
+  }
+]
+
+### Capture the first id from the create above
+@id = {{createSingle.response.body.ids[0]}}
+
+### Get one with delivery state
+GET {{host}}/notifications/{{id}}
+
+### List (no filter, default page)
+GET {{host}}/notifications
+
+### List with filters + pagination
+GET {{host}}/notifications?status=sent&channel=email&limit=20&offset=0
+
+### List within a time range (RFC3339)
+GET {{host}}/notifications?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z&limit=50
+
+### Cancel while still scheduled (409 once it is in flight)
+DELETE {{host}}/notifications/{{id}}

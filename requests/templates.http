@@ -1,0 +1,49 @@
+# Templates: create a reusable body with {{var}} placeholders, then send through
+# it by passing template_id + template_vars. Missing vars are a 400.
+
+@host = http://localhost:8080
+
+### Create a template
+# @name createTemplate
+POST {{host}}/templates
+Content-Type: application/json
+
+{
+  "name": "welcome-email",
+  "channel": "email",
+  "body": "Hi {{name}}, your code is {{code}}."
+}
+
+### Fetch it by name
+GET {{host}}/templates/welcome-email
+
+### Capture the template id from the create above
+@templateId = {{createTemplate.response.body.id}}
+
+### Send through the template (vars get substituted server-side)
+POST {{host}}/notifications
+Content-Type: application/json
+
+[
+  {
+    "recipient": "new-user@example.com",
+    "channel": "email",
+    "priority": "high",
+    "template_id": "{{templateId}}",
+    "template_vars": { "name": "Huseyin", "code": "8421" }
+  }
+]
+
+### Missing a required var -> 400 with "missing template vars: code"
+POST {{host}}/notifications
+Content-Type: application/json
+
+[
+  {
+    "recipient": "new-user@example.com",
+    "channel": "email",
+    "priority": "low",
+    "template_id": "{{templateId}}",
+    "template_vars": { "name": "Huseyin" }
+  }
+]

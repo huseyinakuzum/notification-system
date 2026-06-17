@@ -21,6 +21,7 @@ type KafkaDLQ struct {
 	writer messageWriter
 }
 
+// NewKafkaDLQ builds a KafkaDLQ that publishes via writer.
 func NewKafkaDLQ(writer messageWriter) *KafkaDLQ {
 	return &KafkaDLQ{writer: writer}
 }
@@ -36,6 +37,7 @@ type dlqRecord struct {
 	FailedAt      string `json:"failed_at"`
 }
 
+// Produce writes a dead-letter record for n with the given failure reason.
 func (d *KafkaDLQ) Produce(ctx context.Context, n models.Notification, reason string) error {
 	rec := dlqRecord{
 		ID:            n.ID.String(),

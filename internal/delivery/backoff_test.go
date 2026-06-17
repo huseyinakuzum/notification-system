@@ -7,7 +7,7 @@ import (
 
 func TestBackoffGrowsExponentially(t *testing.T) {
 	base := time.Second
-	max := time.Hour
+	maxDelay := time.Hour
 	// jitter 0 → deterministic base*2^(attempt-1)
 	cases := map[int]time.Duration{
 		1: 1 * time.Second,
@@ -16,7 +16,7 @@ func TestBackoffGrowsExponentially(t *testing.T) {
 		4: 8 * time.Second,
 	}
 	for attempt, want := range cases {
-		got := backoff(attempt, base, max, 0, func() float64 { return 0.5 })
+		got := backoff(attempt, base, maxDelay, 0, func() float64 { return 0.5 })
 		if got != want {
 			t.Errorf("attempt %d: got %v, want %v", attempt, got, want)
 		}

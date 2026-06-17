@@ -9,25 +9,31 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
+// DB holds database connection settings.
 type DB struct {
 	DSN string `env:"DB_DSN"`
 }
 
+// Kafka holds broker connection settings.
 type Kafka struct {
 	Brokers []string `env:"KAFKA_BROKERS" envSeparator:","`
 }
 
+// Scheduler holds the due-engine poll cadence and batch sizing.
 type Scheduler struct {
 	PollInterval time.Duration `env:"SCHEDULER_POLL_INTERVAL" envDefault:"2s"`
 	BatchSize    int           `env:"SCHEDULER_BATCH_SIZE" envDefault:"500"`
 }
 
+// Backoff holds exponential retry-delay parameters.
 type Backoff struct {
 	Base   time.Duration `env:"BACKOFF_BASE" envDefault:"1s"`
 	Max    time.Duration `env:"BACKOFF_MAX" envDefault:"5m"`
 	Jitter float64       `env:"BACKOFF_JITTER" envDefault:"0.2"`
 }
 
+// Delivery holds delivery-worker tuning: rescan cadence, claim sizing, rate
+// limits, and provider endpoint settings.
 type Delivery struct {
 	RescanInterval  time.Duration `env:"DELIVERY_RESCAN_INTERVAL" envDefault:"5s"`
 	ClaimBatch      int           `env:"DELIVERY_CLAIM_BATCH" envDefault:"500"`
@@ -37,6 +43,7 @@ type Delivery struct {
 	ProviderBaseURL string        `env:"PROVIDER_BASE_URL" envDefault:"https://webhook.site/"`
 }
 
+// Config is the top-level service configuration assembled from the environment.
 type Config struct {
 	DB        DB
 	Kafka     Kafka

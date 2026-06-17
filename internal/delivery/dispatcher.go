@@ -108,7 +108,7 @@ func (d *dispatcher) fail(ctx context.Context, n models.Notification, reason str
 
 // finish swallows ErrConflict (a reaper or duplicate raced us) and propagates
 // real errors.
-func (d *dispatcher) finish(ctx context.Context, err error) error {
+func (d *dispatcher) finish(_ context.Context, err error) error {
 	if errors.Is(err, repository.ErrConflict) {
 		d.logger.Warn("status transition skipped (row no longer processing)")
 		return nil

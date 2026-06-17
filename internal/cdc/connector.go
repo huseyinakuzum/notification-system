@@ -1,3 +1,5 @@
+// Package cdc streams queued-notification changes from Postgres logical
+// replication into the priority Kafka topics that drive delivery.
 package cdc
 
 import (

@@ -6,6 +6,7 @@ import (
 	"github.com/huseyinakuzum/notification-system/internal/models"
 )
 
+// Batch and per-channel content size limits enforced on ingest.
 const (
 	MaxBatchSize    = 1000
 	MaxContentSMS   = 160

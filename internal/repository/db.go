@@ -79,7 +79,7 @@ func (d *DB) Ping(ctx context.Context) error {
 // context.
 func drainBatch(ctx context.Context, tx pgx.Tx, batch *pgx.Batch) (int64, error) {
 	results := tx.SendBatch(ctx, batch)
-	defer results.Close()
+	defer func() { _ = results.Close() }()
 	var affected int64
 	for range batch.Len() {
 		tag, err := results.Exec()

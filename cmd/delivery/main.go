@@ -78,12 +78,12 @@ func run(logger *slog.Logger) error {
 			Topic:   pt.topic,
 			GroupID: pt.group,
 		})
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 		readers[i] = r
 	}
 
 	dlqWriter := kafka.NewWriter(cfg.Kafka.Brokers, dlqTopic)
-	defer dlqWriter.Close()
+	defer func() { _ = dlqWriter.Close() }()
 
 	provider := delivery.NewWebhookProvider(
 		cfg.Delivery.ProviderBaseURL+cfg.ProviderUUID,

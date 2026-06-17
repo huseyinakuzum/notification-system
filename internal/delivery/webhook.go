@@ -15,6 +15,7 @@ import (
 // Outcome classifies the result of a delivery attempt.
 type Outcome int
 
+// Delivery attempt outcomes.
 const (
 	OutcomeSent  Outcome = iota // provider accepted (HTTP 202)
 	OutcomeRetry                // transient failure (429, 5xx, transport)
@@ -114,7 +115,7 @@ func (p *WebhookProvider) Send(ctx context.Context, n models.Notification) SendR
 	if err != nil {
 		return SendResult{Outcome: OutcomeRetry, Detail: fmt.Sprintf("transport: %v", err)}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	outcome := classify(resp.StatusCode)
 	if outcome != OutcomeSent {

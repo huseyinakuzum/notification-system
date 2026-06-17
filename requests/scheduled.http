@@ -1,0 +1,28 @@
+# Scheduled (deferred) sends. scheduled_at is RFC3339; the scheduler gates on it
+# and flips the row to queued once the time passes.
+
+@host = http://localhost:8080
+
+### Schedule a send for a fixed future time
+POST {{host}}/notifications
+Content-Type: application/json
+
+[
+  {
+    "recipient": "future@example.com",
+    "channel": "email",
+    "content": "this should leave the dock at the scheduled time",
+    "priority": "normal",
+    "scheduled_at": "2027-01-01T09:00:00Z"
+  }
+]
+
+### Schedule the same content for two different times -> two distinct rows
+# (scheduled_at is part of the idempotency key, so these do not dedup).
+POST {{host}}/notifications
+Content-Type: application/json
+
+[
+  { "recipient": "future@example.com", "channel": "email", "content": "reminder", "priority": "low", "scheduled_at": "2027-01-01T09:00:00Z" },
+  { "recipient": "future@example.com", "channel": "email", "content": "reminder", "priority": "low", "scheduled_at": "2027-01-02T09:00:00Z" }
+]

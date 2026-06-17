@@ -1,9 +1,37 @@
 # Notification System
 
-Event-driven notification platform in Go. The full lifecycle of a notification
-(scheduling, queueing, delivery with retries, dead-lettering) runs off a single
-source-of-truth table in Postgres. Change data capture streams queued work into
-Kafka, where delivery workers drain it asynchronously and scale out.
+Event-driven notification platform in Go.
+
+[![CI](https://github.com/huseyinakuzum/notification-system/actions/workflows/ci.yml/badge.svg)](https://github.com/huseyinakuzum/notification-system/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Postgres](https://img.shields.io/badge/Postgres-16-4169E1?logo=postgresql&logoColor=white)](docker-compose.yml)
+[![Kafka](https://img.shields.io/badge/Kafka-KRaft-231F20?logo=apachekafka&logoColor=white)](docker-compose.yml)
+[![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-traces-425CC7?logo=opentelemetry&logoColor=white)](#observability-uis)
+
+A notification's whole lifecycle (create, schedule, queue, deliver, retry,
+dead-letter) lives on one Postgres table. Change data capture streams queued
+rows into Kafka, and delivery workers drain them per priority lane. One table
+owns the state, the `scheduled` to `queued` flip is the only thing that triggers
+delivery, and each service is a small loop over that table or the topics it
+feeds. No outbox.
+
+## Contents
+
+- [Architecture](#architecture)
+- [How it maps to the requirements](#how-it-maps-to-the-requirements)
+    - [1. Notification management API](#1-notification-management-api)
+    - [2. Processing engine](#2-processing-engine)
+    - [3. Delivery and retry](#3-delivery-and-retry)
+    - [4. Observability](#4-observability)
+    - [External provider](#external-provider)
+    - [Bonus items](#bonus-items)
+- [Quick start](#quick-start)
+- [API](#api)
+- [Poking at the API](#poking-at-the-api)
+- [Observability UIs](#observability-uis)
+- [Testing](#testing)
+- [CI](#ci)
+- [Configuration](#configuration)
 
 ## Architecture
 
@@ -23,28 +51,123 @@ flowchart TD
 
 ### Components
 
-| Service | Responsibility |
-|---------|----------------|
-| `api` | REST ingest and read API (chi). Validates, enforces idempotency, writes rows. |
-| `scheduler` | Due-engine. Claims rows whose gate (`next_attempt_at` or `scheduled_at`) has passed and flips `scheduled` to `queued`. Handles both first send and retries. |
-| `cdc` | Reads the Postgres WAL through a row-filtered publication (`status='queued'`) and produces to the priority topics. |
-| `delivery` | Drains the priority lanes with anti-starvation, token-bucket rate limiting per channel, backoff with jitter, and a DLQ when attempts run out. Attempt state lives in the DB. |
-| `mock-provider` | Stands in for downstream sms/email/push providers. |
+| Service         | Responsibility                                                                                                                                         |
+|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `api`           | REST ingest and read API (chi). Validates, enforces idempotency, writes rows.                                                                          |
+| `scheduler`     | Claims rows whose gate (`next_attempt_at` or `scheduled_at`) has passed and flips `scheduled` to `queued`. Same loop handles first sends and retries.  |
+| `cdc`           | Reads the Postgres WAL through a row-filtered publication (`status='queued'`) and produces to the priority topics.                                      |
+| `delivery`      | Drains the priority lanes with anti-starvation, per-channel rate limiting, backoff with jitter, and a DLQ when attempts run out. Attempt state in the DB. |
+| `mock-provider` | Stands in for the downstream sms/email/push provider for local runs. Speaks the same contract as webhook.site.                                         |
 
 ### Data model
 
-One `notifications` table carries the whole lifecycle (`scheduled`, `queued`,
-`processing`, `sent`, `failed`, `cancelled`) alongside delivery bookkeeping:
-attempts, next_attempt_at, last_error, provider_message_id, sent_at. A
+One `notifications` table carries the lifecycle (`scheduled`, `queued`,
+`processing`, `sent`, `failed`, `cancelled`) plus delivery bookkeeping:
+`attempts`, `next_attempt_at`, `last_error`, `provider_message_id`, `sent_at`. A
 `templates` table holds reusable channel bodies. The publication is row-filtered
 to `status='queued'` with `REPLICA IDENTITY FULL`, so only deliverable work
-crosses into Kafka and the `scheduled` to `queued` flip is the single event that
-triggers delivery. No separate outbox table.
+reaches Kafka and the `scheduled` to `queued` flip is the single event that
+starts delivery.
+
+## How it maps to the requirements
+
+### 1. Notification management API
+
+- **Create, single or batch.** `POST /notifications` takes a JSON array. One item
+  or up to 1000 per request; over that is rejected (`MaxBatchSize` in
+  `internal/api/validate.go`). The response returns a `batch_id` and the per-item
+  `ids`.
+- **Query by ID.** `GET /notifications/{id}` returns the row and its delivery
+  state (attempts, last error, provider message id, sent-at). A scheduled row
+  with no attempts yet has no delivery block.
+- **Query by batch.** `GET /notifications/batch/{id}` returns the items and a
+  per-status count map (e.g. 800 sent, 150 queued, 50 failed).
+- **Cancel pending.** `DELETE /notifications/{id}` cancels a row that is still
+  `scheduled`. Anything already past that returns `409`.
+- **List with filters and pagination.** `GET /notifications` filters by `status`,
+  `channel`, and a `from`/`to` time range (RFC3339), with `limit` (1-200, default
+  50) and `offset`.
+
+Full surface is in the [API](#api) table and in Swagger at `/swagger/`.
+
+### 2. Processing engine
+
+- **Async workers.** The API does not send. It writes a row and returns. The
+  scheduler flips due rows, CDC streams them to Kafka, and delivery workers drain
+  the topics. The worker pool scales separately from the request path.
+- **Rate limiting, 100/s per channel.** Each channel has its own token-bucket
+  limiter (`golang.org/x/time/rate`), default rate 100/s with a matching burst
+  (`RATE_LIMIT_PER_CHANNEL`, `DELIVERY_RATE_BURST`). The buckets are independent,
+  so one busy channel does not throttle the rest.
+- **Priority queues.** Three Kafka topics: `delivery.high`, `delivery.normal`,
+  `delivery.low`. CDC routes by the row's priority. The delivery picker prefers
+  high but reserves capacity for the lower lanes so they still drain under load.
+- **Content validation.** Required fields and per-channel length caps are checked
+  at ingest (`internal/api/validate.go`): SMS 160, push 256, email 10000 chars.
+  Channel and priority must be known values; empty priority defaults to `normal`.
+  A bad item rejects the whole batch before any write.
+- **Idempotency.** The server hashes `recipient + channel + content + priority +
+  scheduled_at` (sha256, NUL-separated) into a key stored under a `UNIQUE`
+  constraint. An identical payload collapses onto the existing row and is not
+  sent again. Dedup is permanent, not windowed: change any field for a new key.
+  The tradeoff is that a byte-identical notification cannot be sent twice.
+
+### 3. Delivery and retry
+
+- **Provider call.** Delivery POSTs `{to, channel, content}` and expects `202`
+  with `{messageId, status, timestamp}`. The target is `PROVIDER_BASE_URL` +
+  `PROVIDER_UUID` (defaults to webhook.site; see
+  [external provider](#external-provider)).
+- **Outcome classification.** `202` is sent. `429` and `5xx`/transport errors are
+  retryable. Other `4xx` is fatal. Outcome and channel land on the metric.
+- **Backoff with jitter.** A retryable failure re-schedules the row: status back
+  to `scheduled` with a future `next_attempt_at` (exponential backoff plus
+  jitter). The scheduler picks it up when the gate passes. Attempt count is on
+  the row, so retries survive a worker restart.
+- **Dead-letter.** When attempts reach `max_attempts`, or the outcome is fatal,
+  the row goes to `delivery.dlq` and lands in `failed`.
+
+### 4. Observability
+
+- **Metrics.** Prometheus, namespace `nsys`:
+    - `nsys_api_http_requests_total`, `nsys_api_http_request_duration_seconds`
+    - `nsys_scheduler_flipped_total` (scheduled to queued rate), `nsys_scheduler_poll_errors_total`
+    - `nsys_delivery_attempts_total{outcome,channel}` (success vs failure by channel)
+    - `nsys_delivery_duration_seconds{channel}` (delivery latency)
+    - `nsys_delivery_dlq_produced_total{channel}`
+    - `nsys_cdc_events_total{op}`
+- **Structured logging with correlation IDs.** `log/slog` throughout. The API
+  middleware reads or mints an `X-Correlation-ID`, echoes it on the response, and
+  logs it as `correlation_id` so one request is traceable across services.
+- **Health checks.** Each service exposes `/healthz` (liveness) and `/readyz`
+  (readiness; api, scheduler, delivery ping the DB) on `:9090`.
+
+### External provider
+
+The brief asks for webhook.site as the provider. That is the default target
+(`PROVIDER_BASE_URL=https://webhook.site/`, `PROVIDER_UUID=<your-uuid>`), and the
+contract matches: `POST {to, channel, content}` returns
+`202 {messageId, status, timestamp}`.
+
+For an offline one-command run, the stack ships a `mock-provider` service with
+the same contract, so `make up` works without reaching out to webhook.site. Set
+`PROVIDER_UUID` to a real webhook.site bucket to watch the calls arrive.
+
+### Bonus items
+
+| Bonus                                | Status                                                                            |
+|--------------------------------------|-----------------------------------------------------------------------------------|
+| Failure handling (retry/backoff/DLQ) | Done. See [delivery and retry](#3-delivery-and-retry).                             |
+| Scheduled notifications              | Done. `scheduled_at` (RFC3339) defers a send; the scheduler gates on it.           |
+| Template system                      | Done. `POST /templates`, `GET /templates/{name}`; create can reference one by id.  |
+| Distributed tracing                  | Done. OpenTelemetry over OTLP/gRPC to a collector that forwards to Jaeger.         |
+| CI/CD pipeline                       | Done. GitHub Actions, see [CI](#ci).                                               |
+| WebSocket real-time updates          | Not done. Status is read by polling the API.                                       |
 
 ## Quick start
 
-Needs `podman` and `podman compose`. The stack uses no Docker-specific features,
-so `docker compose` works too.
+Needs `podman` and `podman compose`. No Docker-specific features are used, so
+`docker compose` works too.
 
 ```bash
 make up        # build images and start the stack
@@ -66,6 +189,9 @@ Read it back:
 curl -sS localhost:8080/notifications/<id>
 ```
 
+There are ready-made request files under [`requests/`](requests/); see
+[poking at the API](#poking-at-the-api).
+
 Tear down (drops volumes):
 
 ```bash
@@ -74,41 +200,47 @@ make down
 
 ## API
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/notifications` | Create one or many (batch) notifications. |
-| GET | `/notifications` | List with filters (`status`, `channel`, `from`, `to`, `limit`). |
-| GET | `/notifications/{id}` | Fetch one with its delivery state. |
-| GET | `/notifications/batch/{id}` | Fetch a batch with per-status counts. |
-| POST | `/templates` | Create a template. |
-| GET | `/templates/{name}` | Fetch a template. |
-| GET | `/swagger/*` | OpenAPI UI. |
+| Method | Path                        | Purpose                                                                                          |
+|--------|-----------------------------|-------------------------------------------------------------------------------------------------|
+| POST   | `/notifications`            | Create one or many (batch, up to 1000).                                                          |
+| GET    | `/notifications`            | List with filters (`status`, `channel`, `from`, `to`) and pagination (`limit` 1-200, `offset`). |
+| GET    | `/notifications/{id}`       | Fetch one with its delivery state.                                                               |
+| GET    | `/notifications/batch/{id}` | Fetch a batch with per-status counts.                                                            |
+| DELETE | `/notifications/{id}`       | Cancel a still-scheduled notification (409 if already in flight).                                |
+| POST   | `/templates`                | Create a template.                                                                               |
+| GET    | `/templates/{name}`         | Fetch a template.                                                                                |
+| GET    | `/swagger/*`                | OpenAPI UI.                                                                                       |
 
 Channels: `sms`, `email`, `push`. Priorities: `high`, `normal`, `low`.
-Dedup is automatic: the server derives an idempotency key by hashing
-`recipient + channel + content + priority + scheduled_at`, so resubmitting an
-identical payload collapses to the same row. `scheduled_at` (RFC3339) defers
-delivery to the scheduler.
 
-## Observability
+## Poking at the API
 
-Every service runs an operational HTTP server on `:9090`:
+`requests/` holds `.http` files (VS Code REST Client / IntelliJ HTTP client
+format) so you can fire requests without writing curl by hand:
 
-- `GET /healthz` liveness
-- `GET /readyz` readiness (api, scheduler, delivery ping the DB)
-- `GET /metrics` Prometheus metrics (namespace `nsys`)
+| File                          | What it covers                                                          |
+|-------------------------------|------------------------------------------------------------------------|
+| `requests/notifications.http` | Single create, get by id, list, list with filters, cancel.             |
+| `requests/batch.http`         | Batch creates: small batch, mixed channels/priorities, a validation rejection, batch lookup. |
+| `requests/scheduled.http`     | Deferred sends via `scheduled_at`.                                      |
+| `requests/templates.http`     | Create a template and send through it.                                  |
+
+`scripts/send.sh` does the same from the shell. `scripts/send.sh 1000` posts a
+1000-item batch and prints the response (`scripts/send.sh 50 sms high` for 50
+sms at high priority).
+
+## Observability UIs
 
 Bundled UIs on the host:
 
-| Tool | URL | Notes |
-|------|-----|-------|
-| Grafana | http://localhost:3000 | Anonymous admin; the "Notification System" dashboard is auto-provisioned. |
-| Prometheus | http://localhost:9091 | Scrapes all four services every 5s. Host 9091 maps to container 9090. |
-| Jaeger | http://localhost:16686 | Traces. |
-| Kafka UI | http://localhost:8090 | Topic and consumer inspection. |
+| Tool       | URL                    | Notes                                                                     |
+|------------|------------------------|---------------------------------------------------------------------------|
+| Grafana    | http://localhost:3000  | Anonymous admin; the "Notification System" dashboard is auto-provisioned. |
+| Prometheus | http://localhost:9091  | Scrapes all four services every 5s. Host 9091 maps to container 9090.     |
+| Jaeger     | http://localhost:16686 | Traces.                                                                   |
+| Kafka UI   | http://localhost:8090  | Topic and consumer inspection.                                            |
 
-Tracing is OpenTelemetry over OTLP/gRPC into a collector that forwards to
-Jaeger. Pick the exporter with `OTEL_EXPORTER` (`otlp`, `stdout`, `noop`).
+Tracing exporter is selectable with `OTEL_EXPORTER` (`otlp`, `stdout`, `noop`).
 
 ## Testing
 
@@ -137,5 +269,17 @@ runs the integration suite.
 ## Configuration
 
 Services read environment variables (see `internal/config/config.go`). Common
-ones: `DB_DSN`, `KAFKA_BROKERS`, `HTTP_ADDR` (api, default `:8080`), `OBS_ADDR`
-(default `:9090`), `OTEL_EXPORTER`, `OTEL_ENDPOINT`.
+ones:
+
+| Variable                 | Default                 | Purpose                                           |
+|--------------------------|-------------------------|---------------------------------------------------|
+| `DB_DSN`                 | (none)                  | Postgres connection string.                       |
+| `KAFKA_BROKERS`          | (none)                  | Comma-separated broker list.                      |
+| `HTTP_ADDR`              | `:8080`                 | API listen address.                               |
+| `OBS_ADDR`               | `:9090`                 | Health and metrics listen address.                |
+| `RATE_LIMIT_PER_CHANNEL` | `100`                   | Per-channel send rate (msg/s).                    |
+| `DELIVERY_RATE_BURST`    | `100`                   | Per-channel token-bucket burst.                   |
+| `PROVIDER_BASE_URL`      | `https://webhook.site/` | Provider base URL.                                |
+| `PROVIDER_UUID`          | zero-uuid               | Provider path segment (your webhook.site bucket). |
+| `OTEL_EXPORTER`          | (none)                  | `otlp`, `stdout`, or `noop`.                      |
+| `OTEL_ENDPOINT`          | (none)                  | Collector endpoint for OTLP.                      |

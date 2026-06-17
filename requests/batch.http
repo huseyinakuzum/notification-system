@@ -1,0 +1,35 @@
+# Batch creates. POST /notifications always takes an array; 1 to 1000 items.
+
+@host = http://localhost:8080
+
+### Small batch, same channel
+POST {{host}}/notifications
+Content-Type: application/json
+
+[
+  { "recipient": "a@example.com", "channel": "email", "content": "batch item 1", "priority": "normal" },
+  { "recipient": "b@example.com", "channel": "email", "content": "batch item 2", "priority": "normal" },
+  { "recipient": "c@example.com", "channel": "email", "content": "batch item 3", "priority": "low" }
+]
+
+### Mixed channels and priorities in one batch
+POST {{host}}/notifications
+Content-Type: application/json
+
+[
+  { "recipient": "+905550000001", "channel": "sms",   "content": "short sms",        "priority": "high" },
+  { "recipient": "u@example.com",  "channel": "email", "content": "an email body",    "priority": "normal" },
+  { "recipient": "device-token-1", "channel": "push",  "content": "push payload",     "priority": "low" }
+]
+
+### Validation failure: content over the SMS 160-char cap (whole batch rejected)
+POST {{host}}/notifications
+Content-Type: application/json
+
+[
+  { "recipient": "+905550000002", "channel": "sms", "content": "x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x", "priority": "high" }
+]
+
+### Get a batch with per-status counts
+# Replace the uuid with a batch_id from any create response.
+GET {{host}}/notifications/batch/00000000-0000-0000-0000-000000000000

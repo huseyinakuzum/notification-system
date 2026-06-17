@@ -5,6 +5,7 @@ package models
 // Status is the lifecycle state of a notification.
 type Status string
 
+// Notification lifecycle states.
 const (
 	StatusScheduled  Status = "scheduled"
 	StatusQueued     Status = "queued"
@@ -27,6 +28,7 @@ func (s Status) Valid() bool {
 // Channel is the delivery transport for a notification.
 type Channel string
 
+// Supported delivery channels.
 const (
 	ChannelSMS   Channel = "sms"
 	ChannelEmail Channel = "email"
@@ -46,6 +48,7 @@ func (c Channel) Valid() bool {
 // Priority controls relative scheduling urgency of a notification.
 type Priority string
 
+// Supported priority levels.
 const (
 	PriorityHigh   Priority = "high"
 	PriorityNormal Priority = "normal"
