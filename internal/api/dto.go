@@ -80,7 +80,7 @@ type templateCreateRequest struct {
 // notifToView projects a notification row into the API response shape, including
 // delivery bookkeeping carried on the same row.
 func notifToView(n models.Notification) notificationView {
-	return notificationView{
+	v := notificationView{
 		ID:          n.ID,
 		BatchID:     n.BatchID,
 		Recipient:   n.Recipient,
@@ -89,13 +89,17 @@ func notifToView(n models.Notification) notificationView {
 		Status:      n.Status,
 		ScheduledAt: n.ScheduledAt,
 		CreatedAt:   n.CreatedAt,
-		Delivery: &deliveryView{
+	}
+
+	if n.Status != models.StatusScheduled || n.Attempts > 0 {
+		v.Delivery = &deliveryView{
 			Status:            n.Status,
 			Attempts:          n.Attempts,
 			MaxAttempts:       n.MaxAttempts,
 			LastError:         n.LastError,
 			ProviderMessageID: n.ProviderMessageID,
 			SentAt:            n.SentAt,
-		},
+		}
 	}
+	return v
 }
