@@ -57,7 +57,7 @@ Post a notification:
 ```bash
 curl -sS -X POST localhost:8080/notifications \
   -H 'Content-Type: application/json' \
-  -d '[{"recipient":"me@example.com","channel":"email","content":"hello","priority":"high","idempotency_key":"demo-1"}]'
+  -d '[{"recipient":"me@example.com","channel":"email","content":"hello","priority":"high"}]'
 ```
 
 Read it back:
@@ -85,8 +85,10 @@ make down
 | GET | `/swagger/*` | OpenAPI UI. |
 
 Channels: `sms`, `email`, `push`. Priorities: `high`, `normal`, `low`.
-`idempotency_key` is required and deduplicates retried submissions.
-`scheduled_at` (RFC3339) defers delivery to the scheduler.
+Dedup is automatic: the server derives an idempotency key by hashing
+`recipient + channel + content + priority + scheduled_at`, so resubmitting an
+identical payload collapses to the same row. `scheduled_at` (RFC3339) defers
+delivery to the scheduler.
 
 ## Observability
 
