@@ -1,0 +1,3 @@
+DROP PUBLICATION IF EXISTS nsys_pub;
+DROP TABLE IF EXISTS templates;
+DROP TABLE IF EXISTS notifications;
