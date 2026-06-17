@@ -1,0 +1,210 @@
+services:
+  postgres:
+    image: postgres:16
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=5
+      - -c
+      - max_wal_senders=5
+    environment:
+      POSTGRES_USER: nsys
+      POSTGRES_PASSWORD: nsys
+      POSTGRES_DB: nsys
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nsys -d nsys"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: WPIjdEd8SEym5o1kDGHESQ
+    ports: ["9092:9092"]
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9092 --list || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgres://nsys:nsys@postgres:5432/nsys?sslmode=disable
+      - up
+
+  topics-init:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER: kafka:9092
+    volumes:
+      - ./scripts/create-topics.sh:/create-topics.sh:ro
+    entrypoint: ["bash", "/create-topics.sh"]
+
+  cdc:
+    build:
+      context: .
+      target: cdc
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      topics-init:
+        condition: service_completed_successfully
+    environment:
+      DB_DSN: postgres://nsys:nsys@postgres:5432/nsys?sslmode=disable
+      KAFKA_BROKERS: kafka:9092
+      OTEL_EXPORTER: otlp
+      OTEL_ENDPOINT: otel-collector:4317
+      OBS_ADDR: ":9090"
+    restart: on-failure
+
+  api:
+    build:
+      context: .
+      target: api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DB_DSN: postgres://nsys:nsys@postgres:5432/nsys?sslmode=disable
+      KAFKA_BROKERS: kafka:9092
+      HTTP_ADDR: ":8080"
+      OTEL_EXPORTER: otlp
+      OTEL_ENDPOINT: otel-collector:4317
+      OBS_ADDR: ":9090"
+    ports: ["8080:8080"]
+    restart: on-failure
+
+  scheduler:
+    build:
+      context: .
+      target: scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DB_DSN: postgres://nsys:nsys@postgres:5432/nsys?sslmode=disable
+      KAFKA_BROKERS: kafka:9092
+      OTEL_EXPORTER: otlp
+      OTEL_ENDPOINT: otel-collector:4317
+      OBS_ADDR: ":9090"
+    restart: on-failure
+
+  mock-provider:
+    build:
+      context: .
+      target: mockprovider
+    environment:
+      MOCK_PROVIDER_ADDR: ":9099"
+    restart: on-failure
+
+  delivery:
+    build:
+      context: .
+      target: delivery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      topics-init:
+        condition: service_completed_successfully
+      mock-provider:
+        condition: service_started
+    environment:
+      DB_DSN: postgres://nsys:nsys@postgres:5432/nsys?sslmode=disable
+      KAFKA_BROKERS: kafka:9092
+      PROVIDER_BASE_URL: "http://mock-provider:9099/"
+      OTEL_EXPORTER: otlp
+      OTEL_ENDPOINT: otel-collector:4317
+      OBS_ADDR: ":9090"
+    restart: on-failure
+
+  kafka-ui:
+    image: docker.io/provectuslabs/kafka-ui:latest
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: nsys
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    ports: ["8090:8080"]
+    restart: on-failure
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.103.1
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./deploy/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    depends_on:
+      jaeger:
+        condition: service_started
+    ports:
+      - "4317:4317"
+    restart: on-failure
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+    restart: on-failure
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9091:9090"
+    restart: on-failure
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    restart: on-failure

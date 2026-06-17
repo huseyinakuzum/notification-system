@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: notification-system
+    static_configs:
+      - targets:
+          - api:9090
+          - scheduler:9090
+          - delivery:9090
+          - cdc:9090

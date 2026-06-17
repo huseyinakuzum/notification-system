@@ -1,0 +1,74 @@
+{
+  "uid": "nsys-overview",
+  "title": "Notification System",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "API requests/sec by route+status",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (route, status) (rate(nsys_api_http_requests_total[1m]))",
+          "legendFormat": "{{route}} {{status}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "API p95 latency (s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(nsys_api_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Scheduler flipped/sec",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "rate(nsys_scheduler_flipped_total[1m])", "legendFormat": "flipped" },
+        { "expr": "rate(nsys_scheduler_poll_errors_total[1m])", "legendFormat": "poll errors" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Delivery attempts/sec by outcome",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (outcome, channel) (rate(nsys_delivery_attempts_total[1m]))",
+          "legendFormat": "{{outcome}} {{channel}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DLQ produced/sec",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum by (channel) (rate(nsys_delivery_dlq_produced_total[1m]))",
+          "legendFormat": "{{channel}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "CDC events/sec by op",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum by (op) (rate(nsys_cdc_events_total[1m]))",
+          "legendFormat": "{{op}}"
+        }
+      ]
+    }
+  ]
+}
