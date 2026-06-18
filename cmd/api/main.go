@@ -1,3 +1,4 @@
+// Command api serves the HTTP API for creating and querying notifications and templates.
 package main
 
 import (

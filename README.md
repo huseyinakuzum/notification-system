@@ -29,6 +29,7 @@ feeds. No outbox.
 - [API](#api)
 - [Poking at the API](#poking-at-the-api)
 - [Observability UIs](#observability-uis)
+- [Load testing](#load-testing)
 - [Testing](#testing)
 - [CI](#ci)
 - [Configuration](#configuration)
@@ -130,12 +131,16 @@ Full surface is in the [API](#api) table and in Swagger at `/swagger/`.
 ### 4. Observability
 
 - **Metrics.** Prometheus, namespace `nsys`:
-    - `nsys_api_http_requests_total`, `nsys_api_http_request_duration_seconds`
+    - `nsys_api_http_requests_total`, `nsys_api_http_request_duration_seconds` (histogram, for p50/p95/p99)
     - `nsys_scheduler_flipped_total` (scheduled to queued rate), `nsys_scheduler_poll_errors_total`
-    - `nsys_delivery_attempts_total{outcome,channel}` (success vs failure by channel)
-    - `nsys_delivery_duration_seconds{channel}` (delivery latency)
+    - `nsys_delivery_attempts_total{outcome,channel,priority}` (sent/retry/fatal, sliced by channel and lane)
+    - `nsys_delivery_duration_seconds{channel}` (delivery latency histogram)
     - `nsys_delivery_dlq_produced_total{channel}`
     - `nsys_cdc_events_total{op}`
+    - `nsys_kafka_reader_*{topic}` — live consumer-group telemetry pulled from the
+      kafka-go readers every 5s: `lag`, `offset`, `queue_length`, `queue_capacity`
+      (gauges) and `messages_total`, `fetches_total`, `errors_total`,
+      `rebalances_total`, `timeouts_total` (counters), one series per priority topic.
 - **Structured logging with correlation IDs.** `log/slog` throughout. The API
   middleware reads or mints an `X-Correlation-ID`, echoes it on the response, and
   logs it as `correlation_id` so one request is traceable across services.
@@ -231,16 +236,71 @@ sms at high priority).
 
 ## Observability UIs
 
-Bundled UIs on the host:
+Everything you need to watch the pipeline end to end is bundled in the stack and
+wired up on first boot — no manual datasource or dashboard setup.
 
 | Tool       | URL                    | Notes                                                                     |
 |------------|------------------------|---------------------------------------------------------------------------|
 | Grafana    | http://localhost:3000  | Anonymous admin; the "Notification System" dashboard is auto-provisioned. |
 | Prometheus | http://localhost:9091  | Scrapes all four services every 5s. Host 9091 maps to container 9090.     |
-| Jaeger     | http://localhost:16686 | Traces.                                                                   |
-| Kafka UI   | http://localhost:8090  | Topic and consumer inspection.                                            |
+| Jaeger     | http://localhost:16686 | Distributed traces, api -> cdc -> delivery -> provider.                   |
+| Kafka UI   | http://localhost:8090  | Topic, partition, and consumer-group inspection.                          |
+| Swagger    | http://localhost:8080/swagger/ | OpenAPI UI for the notification and template endpoints.           |
+
+### The Grafana dashboard
+
+The provisioned **Notification System** dashboard (`http://localhost:3000`) is
+the single pane of glass. It opens on the last 30 minutes, auto-refreshes every
+10s, and is organised into six rows so you can read the system top to bottom:
+
+- **Overview** — at-a-glance stat tiles: delivery success %, delivered/s, API
+  requests/s, API p95 latency, total Kafka lag, DLQ/s. Color thresholds flip the
+  tiles red when something is wrong.
+- **Throughput** — API requests by status, delivery attempts by outcome
+  (stacked sent/retry/fatal), CDC events by op.
+- **Latency** — API latency quantiles (p50/p95/p99) and a latency heatmap,
+  plus delivery latency by channel (p95/p99).
+- **Kafka pipeline** — consumer lag by topic, fetch queue depth vs capacity,
+  messages consumed/s, reader errors/timeouts/rebalances, and committed offset
+  per lane. This row is driven by the `nsys_kafka_reader_*` series.
+- **CDC & scheduler** — scheduler flips/s, scheduler poll errors/s, cumulative
+  CDC events by op.
+- **Errors & DLQ** — delivery retry vs fatal/s and DLQ produced/s by channel.
+
+Drive load through the system (see [load testing](#load-testing)) and every row
+lights up in real time.
 
 Tracing exporter is selectable with `OTEL_EXPORTER` (`otlp`, `stdout`, `noop`).
+
+## Load testing
+
+Two ways to put traffic through the pipeline.
+
+**One-shot batches** — `scripts/send.sh` posts a batch and prints the response:
+
+```bash
+scripts/send.sh 1000           # 1000-item batch
+scripts/send.sh 50 sms high    # 50 sms at high priority
+```
+
+**Continuous randomized load** — `scripts/loadtest.sh` runs an open loop that
+posts forever until you stop it, randomizing every dimension so all lanes,
+channels, and the scheduler path stay exercised:
+
+- random channel (`sms`/`email`/`push`) and priority (`high`/`normal`/`low`),
+- 60% single sends, 40% batches of 2-8,
+- ~25% of items scheduled 3-12s into the future, so the `scheduled -> queued`
+  flip (and therefore CDC) is continuously driven, not just immediate sends.
+
+```bash
+scripts/loadtest.sh            # default pace, ~0.2-0.7s between requests
+scripts/loadtest.sh 0 1        # near flat-out, to build lag and watch it drain
+```
+
+It prints a running count every 50 requests. Open the Grafana dashboard while it
+runs to watch throughput climb, lag build and drain on the Kafka row, and the
+latency quantiles settle. Stop it with `Ctrl-C` (or `pkill -f loadtest.sh` if
+backgrounded).
 
 ## Testing
 

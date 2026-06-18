@@ -1,3 +1,4 @@
+// Command scheduler flips due scheduled notifications to the queued state.
 package main
 
 import (

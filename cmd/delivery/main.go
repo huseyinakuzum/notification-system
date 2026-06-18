@@ -1,3 +1,4 @@
+// Command delivery consumes the priority topics and dispatches each notification to its provider, handling rate limiting, retries, and the DLQ.
 package main
 
 import (
@@ -8,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	kafkago "github.com/segmentio/kafka-go"
 
 	"github.com/huseyinakuzum/notification-system/internal/config"
 	"github.com/huseyinakuzum/notification-system/internal/delivery"
@@ -72,6 +75,7 @@ func run(logger *slog.Logger) error {
 	}()
 
 	var readers [3]delivery.Reader
+	var kafkaReaders [3]*kafkago.Reader
 	for i, pt := range priorityTopics {
 		r := kafka.NewReader(kafka.ReaderConfig{
 			Brokers: cfg.Kafka.Brokers,
@@ -80,7 +84,10 @@ func run(logger *slog.Logger) error {
 		})
 		defer func() { _ = r.Close() }()
 		readers[i] = r
+		kafkaReaders[i] = r
 	}
+
+	go exportKafkaStats(ctx, kafkaReaders)
 
 	dlqWriter := kafka.NewWriter(cfg.Kafka.Brokers, dlqTopic)
 	defer func() { _ = dlqWriter.Close() }()

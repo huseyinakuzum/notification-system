@@ -1,3 +1,4 @@
+// Command cdc streams queued notifications from Postgres logical replication to the Kafka priority topics.
 package main
 
 import (

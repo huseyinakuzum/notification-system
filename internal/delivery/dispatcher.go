@@ -76,19 +76,20 @@ func (d *dispatcher) handle(ctx context.Context, id uuid.UUID) error {
 	res := d.sender.Send(ctx, n)
 	obs.DeliveryDuration.WithLabelValues(string(n.Channel)).Observe(time.Since(start).Seconds())
 
+	prio := string(n.Priority)
 	switch res.Outcome {
 	case OutcomeSent:
-		obs.DeliveryAttempts.WithLabelValues("sent", string(n.Channel)).Inc()
+		obs.DeliveryAttempts.WithLabelValues("sent", string(n.Channel), prio).Inc()
 		return d.finish(ctx, d.store.MarkSent(ctx, n.ID, res.ProviderMessageID))
 	case OutcomeFatal:
-		obs.DeliveryAttempts.WithLabelValues("fatal", string(n.Channel)).Inc()
+		obs.DeliveryAttempts.WithLabelValues("fatal", string(n.Channel), prio).Inc()
 		return d.fail(ctx, n, res.Detail)
 	default: // OutcomeRetry
 		if n.Attempts >= n.MaxAttempts {
-			obs.DeliveryAttempts.WithLabelValues("fatal", string(n.Channel)).Inc()
+			obs.DeliveryAttempts.WithLabelValues("fatal", string(n.Channel), prio).Inc()
 			return d.fail(ctx, n, res.Detail)
 		}
-		obs.DeliveryAttempts.WithLabelValues("retry", string(n.Channel)).Inc()
+		obs.DeliveryAttempts.WithLabelValues("retry", string(n.Channel), prio).Inc()
 		next := time.Now().Add(backoff(n.Attempts, d.cfg.BackoffBase, d.cfg.BackoffMax, d.cfg.BackoffJitter, d.rnd))
 		return d.finish(ctx, d.store.MarkRetry(ctx, n.ID, next, res.Detail))
 	}
