@@ -9,8 +9,7 @@ import (
 	"github.com/huseyinakuzum/notification-system/internal/models"
 )
 
-// channelLimiter applies an independent token-bucket rate limit per channel, so
-// a flood on one channel cannot consume another channel's budget.
+// channelLimiter rate-limits each channel independently so one channel can't drain another's budget.
 type channelLimiter struct {
 	perSecond rate.Limit
 	burst     int

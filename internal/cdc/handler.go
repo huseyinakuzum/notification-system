@@ -20,11 +20,9 @@ const (
 	topicDeliveryPrefix = "delivery."
 )
 
-// NewHandler returns a CDC handler that routes queued notifications to a
-// per-priority delivery topic. The row-filtered publication (status='queued')
-// surfaces the scheduled->queued transition as an INSERT and the symmetric
-// exit as a DELETE, so only INSERT and UPDATE events are accepted; the row is
-// defensively re-checked for status='queued' before routing.
+// NewHandler routes queued notifications to a per-priority delivery topic. The
+// row-filtered publication (status='queued') turns the entry into an INSERT/UPDATE
+// and the exit into a DELETE, so only INSERT/UPDATE are accepted and status is re-checked.
 func NewHandler(logger *slog.Logger) pqcdc.Handler {
 	return func(event *pqcdc.Message) []gokafka.Message {
 		if !event.Type.IsInsert() && !event.Type.IsUpdate() {
@@ -67,10 +65,8 @@ func normalizePriority(v any) string {
 	}
 }
 
-// normalizeRow renders pgoutput-decoded values into JSON-friendly forms.
-// pgtype decodes uuid columns as [16]byte, which would otherwise marshal as a
-// numeric array; convert those to canonical UUID strings so downstream
-// consumers see the same identifiers the database stores.
+// normalizeRow converts pgtype's [16]byte uuids to canonical strings so they
+// don't marshal as numeric arrays downstream.
 func normalizeRow(row map[string]any) map[string]any {
 	out := make(map[string]any, len(row))
 	for k, v := range row {
@@ -103,8 +99,6 @@ func traceHeaders(row map[string]any) []gokafka.Header {
 	if corr := coerceString(row["correlation_id"]); corr != "" {
 		headers = append(headers, gokafka.Header{Key: "correlation_id", Value: []byte(corr)})
 	}
-	// Forward the originating W3C traceparent so the delivery worker re-parents
-	// its span onto the API request span instead of starting a new root.
 	if tp := coerceString(row["traceparent"]); tp != "" {
 		headers = append(headers, gokafka.Header{Key: "traceparent", Value: []byte(tp)})
 	}

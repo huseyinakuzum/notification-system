@@ -27,10 +27,8 @@ func correlationID(ctx context.Context) string {
 	return id
 }
 
-// traceParent serializes the active span context in ctx to a W3C traceparent
-// string, or "" if no span is recording. It is persisted on the row so the
-// delivery worker can re-parent its span across the CDC boundary, where Go's
-// context cannot reach.
+// traceParent serializes the active span to a W3C traceparent string ("" if none).
+// Persisted on the row so delivery can re-parent its span across the CDC boundary.
 func traceParent(ctx context.Context) string {
 	carrier := propagation.MapCarrier{}
 	otel.GetTextMapPropagator().Inject(ctx, carrier)

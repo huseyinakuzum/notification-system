@@ -39,8 +39,7 @@ type dispatcherConfig struct {
 	BackoffJitter float64
 }
 
-// dispatcher handles a single notification end to end: claim, rate-limit, send,
-// then record the terminal or retry transition.
+// dispatcher handles one notification end to end: claim, rate-limit, send, record outcome.
 type dispatcher struct {
 	store   claimStore
 	sender  sender
@@ -51,9 +50,7 @@ type dispatcher struct {
 	logger  *slog.Logger
 }
 
-// handle processes one notification id. A non-claimable row (already handled,
-// capped, or not yet due) is a no-op. Lost claims surfaced as ErrConflict by the
-// store are logged, not propagated, so one raced row does not stall the worker.
+// handle processes one notification id; a non-claimable row is a no-op.
 func (d *dispatcher) handle(ctx context.Context, id uuid.UUID) error {
 	ctx, span := tracer.Start(ctx, "delivery.handle",
 		trace.WithAttributes(attribute.String("notification.id", id.String())))
@@ -107,8 +104,7 @@ func (d *dispatcher) fail(ctx context.Context, n models.Notification, reason str
 	return nil
 }
 
-// finish swallows ErrConflict (a reaper or duplicate raced us) and propagates
-// real errors.
+// finish swallows ErrConflict (a reaper or duplicate raced us), propagates the rest.
 func (d *dispatcher) finish(_ context.Context, err error) error {
 	if errors.Is(err, repository.ErrConflict) {
 		d.logger.Warn("status transition skipped (row no longer processing)")

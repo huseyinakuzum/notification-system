@@ -18,15 +18,12 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// noopShutdown is returned when tracing is disabled so callers can always defer
-// the result without a nil check.
+// noopShutdown lets callers defer the result without a nil check when tracing is off.
 func noopShutdown(context.Context) error { return nil }
 
-// InitTracer configures the global tracer provider and W3C propagator for
-// serviceName. exporter selects the span sink: "otlp" ships to endpoint over
-// gRPC (the collector), "stdout" prints spans (handy for local runs), and any
-// other value ("none", "") leaves the default no-op provider in place. The
-// returned func flushes and stops the exporter; callers defer it.
+// InitTracer sets the global tracer provider and W3C propagator. exporter selects
+// the sink: "otlp" (gRPC to endpoint), "stdout", or anything else for no-op. The
+// returned func flushes and stops the exporter.
 func InitTracer(ctx context.Context, serviceName, exporter, endpoint string) (func(context.Context) error, error) {
 	// Propagation is set even when tracing is off so an upstream traceparent is
 	// still carried through (cheap, and avoids surprises if a peer has tracing on).

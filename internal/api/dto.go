@@ -21,11 +21,8 @@ type createItem struct {
 	ScheduledAt  *time.Time        `json:"scheduled_at"`
 }
 
-// deriveIdempotencyKey computes a deterministic dedup key from the fields that
-// define a distinct send. Two requests with the same recipient, channel, content,
-// priority, and schedule collapse to one row via the UNIQUE(idempotency_key)
-// constraint; changing any of them yields a new key. Callers pass the resolved
-// content (post-template) and resolved priority so the key is stable.
+// deriveIdempotencyKey hashes the fields that define a distinct send; identical
+// requests collapse to one row via UNIQUE(idempotency_key). Pass resolved content/priority.
 func deriveIdempotencyKey(recipient string, channel models.Channel, content string, priority models.Priority, scheduledAt *time.Time) string {
 	sched := ""
 	if scheduledAt != nil {
@@ -77,8 +74,6 @@ type templateCreateRequest struct {
 	Body    string         `json:"body"`
 }
 
-// notifToView projects a notification row into the API response shape, including
-// delivery bookkeeping carried on the same row.
 func notifToView(n models.Notification) notificationView {
 	v := notificationView{
 		ID:          n.ID,

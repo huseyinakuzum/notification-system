@@ -10,9 +10,7 @@ import (
 
 var placeholderRE = regexp.MustCompile(`{{\s*(\w+)\s*}}`)
 
-// Render substitutes {{var}} placeholders in body using vars. It returns an
-// error naming every referenced placeholder that has no corresponding key in
-// vars; the substitution is only applied when all placeholders resolve.
+// Render substitutes {{var}} placeholders, erroring (and substituting nothing) if any var is missing.
 func Render(body string, vars map[string]string) (string, error) {
 	var missing []string
 	seen := make(map[string]struct{})

@@ -26,11 +26,7 @@ func contentLimit(it createItem) int {
 	}
 }
 
-// validateItem checks a single create request after template rendering: the
-// channel must be recognized, the priority valid (empty is allowed and treated
-// as normal downstream), and the content non-empty and within the per-channel
-// length limit. It returns a descriptive error, or nil when the item is
-// acceptable.
+// validateItem checks a create request post-render; empty priority is allowed (treated as normal downstream).
 func validateItem(it createItem) error {
 	if !it.Channel.Valid() {
 		return fmt.Errorf("invalid channel: %q", it.Channel)

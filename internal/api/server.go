@@ -23,7 +23,6 @@ type Server struct {
 	router chi.Router
 }
 
-// New builds a Server with all routes and middleware wired.
 func New(
 	cfg config.Config,
 	logger *slog.Logger,
@@ -60,13 +59,11 @@ func New(
 	return s
 }
 
-// Handler returns the configured HTTP handler, wrapped with OpenTelemetry HTTP
-// instrumentation so every request becomes a server span.
+// Handler wraps the router with otelhttp so every request becomes a server span.
 func (s *Server) Handler() http.Handler {
 	return otelhttp.NewHandler(s.router, "api")
 }
 
-// writeJSON serializes v as JSON with the given status code.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -78,12 +75,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// writeError writes a JSON error envelope with the given status code.
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// writeErrorf writes a formatted JSON error envelope with the given status code.
 func writeErrorf(w http.ResponseWriter, status int, format string, args ...any) {
 	writeError(w, status, fmt.Sprintf(format, args...))
 }

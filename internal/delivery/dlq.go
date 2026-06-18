@@ -21,7 +21,6 @@ type KafkaDLQ struct {
 	writer messageWriter
 }
 
-// NewKafkaDLQ builds a KafkaDLQ that publishes via writer.
 func NewKafkaDLQ(writer messageWriter) *KafkaDLQ {
 	return &KafkaDLQ{writer: writer}
 }

@@ -9,9 +9,8 @@ import (
 	"github.com/huseyinakuzum/notification-system/internal/repository"
 )
 
-// NotificationStore is the notifications persistence the API depends on. It is
-// declared here (consumer side) so the API depends on behaviour, not on the
-// concrete pgx repository.
+// NotificationStore is the notifications persistence the API depends on, declared
+// consumer-side so the API depends on behaviour, not the pgx repository.
 type NotificationStore interface {
 	InsertBatchIdempotent(ctx context.Context, rows []models.Notification) ([]uuid.UUID, error)
 	GetByID(ctx context.Context, id uuid.UUID) (models.Notification, error)

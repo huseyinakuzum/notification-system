@@ -15,7 +15,6 @@ const (
 	StatusCancelled  Status = "cancelled"
 )
 
-// Valid reports whether s is a recognized status value.
 func (s Status) Valid() bool {
 	switch s {
 	case StatusScheduled, StatusQueued, StatusProcessing, StatusSent, StatusFailed, StatusCancelled:
@@ -35,7 +34,6 @@ const (
 	ChannelPush  Channel = "push"
 )
 
-// Valid reports whether c is a recognized channel value.
 func (c Channel) Valid() bool {
 	switch c {
 	case ChannelSMS, ChannelEmail, ChannelPush:
@@ -55,7 +53,6 @@ const (
 	PriorityLow    Priority = "low"
 )
 
-// Valid reports whether p is a recognized priority value.
 func (p Priority) Valid() bool {
 	switch p {
 	case PriorityHigh, PriorityNormal, PriorityLow:

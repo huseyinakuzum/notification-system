@@ -16,11 +16,8 @@ SET status = 'processing', attempts = attempts + 1, updated_at = now()
 WHERE id = $1 AND status = 'queued'
 RETURNING ` + notificationColumns
 
-// Claim atomically transitions a notification from queued to processing,
-// incrementing attempts. Only the caller that wins the compare-and-set gets the
-// row; if it is not claimable (already handled or reset) it returns ErrNotFound.
-// Due-time and attempt-cap gating live in the scheduler's scheduled->queued
-// transition, so claim only checks the queued state.
+// Claim CAS-transitions queued->processing and bumps attempts; only the winner
+// gets the row, others get ErrNotFound. Due/cap gating lives in the scheduler.
 func (r *NotificationRepository) Claim(ctx context.Context, id uuid.UUID) (models.Notification, error) {
 	return r.getNotification(ctx, notificationClaimSQL, id)
 }
@@ -41,9 +38,8 @@ UPDATE notifications
 SET status = 'scheduled', next_attempt_at = $2, last_error = $3, updated_at = now()
 WHERE id = $1 AND status = 'processing'`
 
-// MarkRetry schedules a retry by returning the row to scheduled with a future
-// next_attempt_at; the scheduler re-flips it to queued once due. attempts was
-// already incremented at claim time.
+// MarkRetry returns the row to scheduled with a future next_attempt_at; the
+// scheduler re-flips it once due. attempts was already bumped at claim time.
 func (r *NotificationRepository) MarkRetry(ctx context.Context, id uuid.UUID, nextAttemptAt time.Time, lastErr string) error {
 	return r.execCAS(ctx, "mark retry", notificationMarkRetrySQL, id, nextAttemptAt, lastErr)
 }
@@ -76,9 +72,8 @@ SET status = 'scheduled', updated_at = now()
 WHERE status = 'processing'
 	AND updated_at < now() - make_interval(secs => $1)`
 
-// ReapStuck resets rows that have been processing longer than timeout back to
-// scheduled, recovering work stranded by a crashed worker; the scheduler
-// re-flips them to queued. It returns the number of rows reset.
+// ReapStuck resets rows processing longer than timeout back to scheduled,
+// recovering work stranded by a crashed worker. Returns the number reset.
 func (r *NotificationRepository) ReapStuck(ctx context.Context, timeout time.Duration) (int, error) {
 	tag, err := r.db.Pool.Exec(ctx, notificationReapSQL, timeout.Seconds())
 	if err != nil {
@@ -95,9 +90,8 @@ ORDER BY
 	updated_at
 LIMIT $1`
 
-// ListClaimable returns the ids of notifications ready for delivery, ordered by
-// priority then due time. It backs DB-as-source-of-truth recovery: the delivery
-// processor rescans claimable rows independent of the Kafka buffer.
+// ListClaimable returns delivery-ready ids ordered by priority then due time. It
+// backs DB-as-source-of-truth recovery, rescanning independent of the Kafka buffer.
 func (r *NotificationRepository) ListClaimable(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	if limit <= 0 {
 		return nil, nil

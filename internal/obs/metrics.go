@@ -9,7 +9,6 @@ const namespace = "nsys"
 
 // Metrics for the API service.
 var (
-	// HTTPRequests counts handled requests by method, route template, and status.
 	HTTPRequests = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "api",
@@ -17,7 +16,6 @@ var (
 		Help:      "Total HTTP requests handled, by method, route, and status.",
 	}, []string{"method", "route", "status"})
 
-	// HTTPDuration observes request latency by method and route template.
 	HTTPDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: namespace,
 		Subsystem: "api",
@@ -29,7 +27,6 @@ var (
 
 // Metrics for the scheduler service.
 var (
-	// SchedulerFlipped counts rows transitioned scheduled->queued.
 	SchedulerFlipped = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "scheduler",
@@ -37,7 +34,6 @@ var (
 		Help:      "Total notifications flipped from scheduled to queued.",
 	})
 
-	// SchedulerPollErrors counts failed poll cycles.
 	SchedulerPollErrors = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "scheduler",
@@ -48,7 +44,6 @@ var (
 
 // Metrics for the delivery service.
 var (
-	// DeliveryAttempts counts delivery results by outcome, channel, and priority.
 	DeliveryAttempts = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "delivery",
@@ -56,7 +51,6 @@ var (
 		Help:      "Total delivery attempts, by outcome (sent/retry/fatal), channel, and priority.",
 	}, []string{"outcome", "channel", "priority"})
 
-	// DeliveryDuration observes send latency by channel.
 	DeliveryDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: namespace,
 		Subsystem: "delivery",
@@ -65,7 +59,6 @@ var (
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"channel"})
 
-	// DLQProduced counts notifications routed to the dead-letter queue.
 	DLQProduced = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "delivery",
@@ -76,7 +69,6 @@ var (
 
 // Metrics for the CDC service.
 var (
-	// CDCEvents counts replication events handled by operation.
 	CDCEvents = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "cdc",
@@ -88,8 +80,6 @@ var (
 // Metrics for Kafka consumer-group readers, scraped from kafka-go reader stats
 // by topic (one per delivery priority lane).
 var (
-	// KafkaReaderLag reports the current consumer lag (messages behind the head)
-	// per topic.
 	KafkaReaderLag = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Subsystem: "kafka_reader",
@@ -97,7 +87,6 @@ var (
 		Help:      "Current consumer-group lag in messages, by topic.",
 	}, []string{"topic"})
 
-	// KafkaReaderOffset reports the last committed offset per topic.
 	KafkaReaderOffset = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Subsystem: "kafka_reader",
@@ -105,7 +94,6 @@ var (
 		Help:      "Last committed offset, by topic.",
 	}, []string{"topic"})
 
-	// KafkaReaderQueueLength reports the in-memory fetch queue depth per topic.
 	KafkaReaderQueueLength = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Subsystem: "kafka_reader",
@@ -113,7 +101,6 @@ var (
 		Help:      "Current in-memory fetch queue length, by topic.",
 	}, []string{"topic"})
 
-	// KafkaReaderQueueCapacity reports the in-memory fetch queue capacity per topic.
 	KafkaReaderQueueCapacity = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Subsystem: "kafka_reader",
@@ -121,7 +108,6 @@ var (
 		Help:      "In-memory fetch queue capacity, by topic.",
 	}, []string{"topic"})
 
-	// KafkaReaderMessages counts messages read per topic.
 	KafkaReaderMessages = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "kafka_reader",
@@ -129,7 +115,6 @@ var (
 		Help:      "Total messages read by the consumer, by topic.",
 	}, []string{"topic"})
 
-	// KafkaReaderFetches counts fetch requests issued per topic.
 	KafkaReaderFetches = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "kafka_reader",
@@ -137,7 +122,6 @@ var (
 		Help:      "Total fetch requests issued, by topic.",
 	}, []string{"topic"})
 
-	// KafkaReaderErrors counts reader errors per topic.
 	KafkaReaderErrors = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "kafka_reader",
@@ -145,7 +129,6 @@ var (
 		Help:      "Total reader errors, by topic.",
 	}, []string{"topic"})
 
-	// KafkaReaderRebalances counts consumer-group rebalances per topic.
 	KafkaReaderRebalances = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "kafka_reader",
@@ -153,7 +136,6 @@ var (
 		Help:      "Total consumer-group rebalances, by topic.",
 	}, []string{"topic"})
 
-	// KafkaReaderTimeouts counts fetch timeouts per topic.
 	KafkaReaderTimeouts = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "kafka_reader",

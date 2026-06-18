@@ -35,9 +35,7 @@ type DB struct {
 	Pool *pgxpool.Pool
 }
 
-// New opens a connection pool for dsn and verifies connectivity with a ping.
-// Pool sizing and connection recycling use service-friendly defaults so idle
-// connections are recycled and a PG restart does not leave stale handles.
+// New opens a pool for dsn and pings it; sizing and recycling use service defaults.
 func New(ctx context.Context, dsn string) (*DB, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -73,10 +71,7 @@ func (d *DB) Ping(ctx context.Context) error {
 	return nil
 }
 
-// drainBatch sends batch on tx, executes every queued command, and returns the
-// total rows affected. It centralizes the send/close/iterate boilerplate shared
-// by the batch-insert repositories; callers wrap the error with their own
-// context.
+// drainBatch executes every queued command on tx and returns total rows affected.
 func drainBatch(ctx context.Context, tx pgx.Tx, batch *pgx.Batch) (int64, error) {
 	results := tx.SendBatch(ctx, batch)
 	defer func() { _ = results.Close() }()

@@ -16,7 +16,6 @@ type TemplateRepository struct {
 	db *DB
 }
 
-// NewTemplateRepository returns a TemplateRepository backed by db.
 func NewTemplateRepository(db *DB) *TemplateRepository {
 	return &TemplateRepository{db: db}
 }

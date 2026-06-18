@@ -76,9 +76,7 @@ type WebhookProvider struct {
 	client *http.Client
 }
 
-// NewWebhookProvider builds a provider that POSTs to url with the given
-// per-request timeout. The transport keeps a generous idle-connection pool per
-// host so the three delivery lanes reuse keep-alives instead of dialing per send.
+// NewWebhookProvider keeps a wide per-host idle pool so the three lanes reuse keep-alives instead of dialing per send.
 func NewWebhookProvider(url string, timeout time.Duration) *WebhookProvider {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.MaxIdleConns = 100

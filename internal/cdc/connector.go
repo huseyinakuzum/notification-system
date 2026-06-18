@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Config holds the inputs needed to start the CDC connector: the Postgres DSN,
-// replication slot and publication names, and Kafka brokers.
+// Config holds the CDC connector inputs: Postgres DSN, replication slot and
+// publication names, and Kafka brokers.
 type Config struct {
 	DSN             string
 	SlotName        string

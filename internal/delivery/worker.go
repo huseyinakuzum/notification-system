@@ -13,8 +13,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 )
 
-// Reader is the subset of segmentio/kafka-go's Reader the worker needs: manual
-// fetch + commit so offsets advance only after a message is handled.
+// Reader is manual fetch + commit, so offsets advance only after a message is handled.
 type Reader interface {
 	FetchMessage(ctx context.Context) (kafka.Message, error)
 	CommitMessages(ctx context.Context, msgs ...kafka.Message) error
@@ -27,10 +26,8 @@ type rescanStore interface {
 	ReapStuck(ctx context.Context, timeout time.Duration) (int, error)
 }
 
-// Worker owns the three priority readers and drives delivery: a strict
-// high→normal→low selector with anti-starvation, plus a periodic DB rescan that
-// re-drives due retries and reaps crash-stranded rows. Kafka is a low-latency
-// hint; the DB is the source of truth.
+// Worker drives delivery across three priority lanes plus a periodic DB rescan.
+// Kafka is a low-latency hint; the DB is the source of truth.
 type Worker struct {
 	readers  [3]Reader // indexed by lane (high, normal, low)
 	dispatch *dispatcher
@@ -180,9 +177,8 @@ func (w *Worker) process(ctx context.Context, l lane, m kafka.Message) {
 	w.commit(ctx, l, m)
 }
 
-// extractTrace rebuilds the upstream span context from the message's traceparent
-// header so dispatch.handle starts a child of the originating API request span.
-// Rescan-driven deliveries carry no headers and fall back to a fresh root span.
+// extractTrace rebuilds the upstream span context from the traceparent header so
+// handle is a child of the API request span; header-less rescans get a fresh root.
 func extractTrace(ctx context.Context, headers []kafka.Header) context.Context {
 	carrier := propagation.MapCarrier{}
 	for _, h := range headers {
