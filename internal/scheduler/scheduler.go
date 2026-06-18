@@ -31,6 +31,7 @@ type Scheduler struct {
 	lastPoll atomic.Int64
 }
 
+// New builds a Scheduler over store with cfg and logger.
 func New(store Store, cfg Config, logger *slog.Logger) *Scheduler {
 	return &Scheduler{store: store, cfg: cfg, logger: logger}
 }

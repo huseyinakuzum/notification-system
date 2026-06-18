@@ -11,6 +11,7 @@ type SchedulerRepository struct {
 	db *DB
 }
 
+// NewSchedulerRepository builds a SchedulerRepository over db.
 func NewSchedulerRepository(db *DB) *SchedulerRepository {
 	return &SchedulerRepository{db: db}
 }

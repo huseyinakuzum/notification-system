@@ -23,6 +23,7 @@ type Server struct {
 	router chi.Router
 }
 
+// New builds a Server with routes and middleware wired.
 func New(
 	cfg config.Config,
 	logger *slog.Logger,
