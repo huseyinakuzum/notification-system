@@ -283,24 +283,39 @@ scripts/send.sh 1000           # 1000-item batch
 scripts/send.sh 50 sms high    # 50 sms at high priority
 ```
 
-**Continuous randomized load** — `scripts/loadtest.sh` runs an open loop that
-posts forever until you stop it, randomizing every dimension so all lanes,
-channels, and the scheduler path stay exercised:
+**Continuous randomized load** — `scripts/loadtest.sh` forks N worker loops that
+post (forever, or for a fixed duration), randomizing every dimension so all
+lanes, channels, and the scheduler path stay exercised:
 
-- random channel (`sms`/`email`/`push`) and priority (`high`/`normal`/`low`),
-- 60% single sends, 40% batches of 2-8,
-- ~25% of items scheduled 3-12s into the future, so the `scheduled -> queued`
-  flip (and therefore CDC) is continuously driven, not just immediate sends.
+- random channel and priority (drawn from configurable sets),
+- a configurable single/batch split, with batch size in a configurable range,
+- a configurable fraction scheduled 3-12s into the future, so the
+  `scheduled -> queued` flip (and therefore CDC) is driven, not just immediate sends.
+
+Everything is a flag (with an env fallback); `-h` prints the full list:
 
 ```bash
-scripts/loadtest.sh            # default pace, ~0.2-0.7s between requests
-scripts/loadtest.sh 0 1        # near flat-out, to build lag and watch it drain
+scripts/loadtest.sh                  # 1 worker, ~0.2-0.7s pace, until Ctrl-C
+scripts/loadtest.sh -w 4 -d 120      # 4 workers for 120s, then auto-stop
+scripts/loadtest.sh -w 8 -m 0 -M 1   # 8 workers near flat-out, to build lag
+scripts/loadtest.sh -b 1 -B 20 -s 80 -S 50   # batches up to 20, 80% single, 50% scheduled
 ```
 
-It prints a running count every 50 requests. Open the Grafana dashboard while it
-runs to watch throughput climb, lag build and drain on the Kafka row, and the
-latency quantiles settle. Stop it with `Ctrl-C` (or `pkill -f loadtest.sh` if
-backgrounded).
+| Flag | Env | Default | Meaning |
+|------|-----|---------|---------|
+| `-w` | `WORKERS` | 1 | parallel worker loops |
+| `-d` | `DURATION` | 0 | run seconds (0 = until interrupted) |
+| `-m`/`-M` | `MIN_SLEEP_DS`/`MAX_SLEEP_DS` | 2/7 | per-request sleep range, deciseconds |
+| `-b`/`-B` | `BATCH_MIN`/`BATCH_MAX` | 2/8 | batch size range |
+| `-s` | `SINGLE_PCT` | 60 | % single sends (rest batched) |
+| `-S` | `SCHED_PCT` | 25 | % items scheduled |
+| `-c`/`-p` | `CHANNELS`/`PRIORITIES` | all | comma-separated sets to draw from |
+| `-u` | `API_BASE_URL` | `http://localhost:8080` | API base URL |
+
+Each worker prints a running count every 50 requests and the workers are killed
+on exit (Ctrl-C, the duration cap, or `pkill -f loadtest.sh`). Open the Grafana
+dashboard while it runs to watch throughput climb, lag build and drain on the
+Kafka row, and the latency quantiles settle.
 
 ## Testing
 
