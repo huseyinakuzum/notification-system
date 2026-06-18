@@ -28,8 +28,8 @@ func NewNotificationRepository(db *DB) *NotificationRepository {
 const notificationInsertSQL = `
 INSERT INTO notifications
 	(id, batch_id, recipient, channel, content, priority,
-	 idempotency_key, correlation_id, status, scheduled_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, now()))
+	 idempotency_key, correlation_id, traceparent, status, scheduled_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, now()))
 ON CONFLICT (idempotency_key) DO NOTHING`
 
 const notificationIDsByKeySQL = `
@@ -66,7 +66,8 @@ func (r *NotificationRepository) InsertBatchIdempotent(ctx context.Context, rows
 			}
 			batch.Queue(notificationInsertSQL,
 				row.ID, row.BatchID, row.Recipient, row.Channel, row.Content,
-				row.Priority, row.IdempotencyKey, row.CorrelationID, row.Status, scheduledAt)
+				row.Priority, row.IdempotencyKey, row.CorrelationID, row.TraceParent,
+				row.Status, scheduledAt)
 		}
 		if _, err := drainBatch(ctx, tx, batch); err != nil {
 			return fmt.Errorf("insert notification: %w", err)
@@ -103,7 +104,7 @@ func (r *NotificationRepository) InsertBatchIdempotent(ctx context.Context, rows
 }
 
 const notificationColumns = `id, batch_id, recipient, channel, content, priority,
-	idempotency_key, correlation_id, status, attempts, max_attempts,
+	idempotency_key, correlation_id, traceparent, status, attempts, max_attempts,
 	next_attempt_at, last_error, provider_message_id, scheduled_at, sent_at,
 	created_at, updated_at`
 
@@ -117,7 +118,7 @@ func (r *NotificationRepository) GetByID(ctx context.Context, id uuid.UUID) (mod
 }
 
 // rowScanner is satisfied by both pgx.Row (QueryRow) and pgx.Rows, letting the
-// 18-column notification scan live in one place.
+// notification column scan live in one place.
 type rowScanner interface {
 	Scan(dest ...any) error
 }
@@ -127,7 +128,7 @@ func scanNotification(s rowScanner) (models.Notification, error) {
 	err := s.Scan(
 		&row.ID, &row.BatchID, &row.Recipient, &row.Channel,
 		&row.Content, &row.Priority, &row.IdempotencyKey, &row.CorrelationID,
-		&row.Status, &row.Attempts, &row.MaxAttempts, &row.NextAttemptAt,
+		&row.TraceParent, &row.Status, &row.Attempts, &row.MaxAttempts, &row.NextAttemptAt,
 		&row.LastError, &row.ProviderMessageID, &row.ScheduledAt, &row.SentAt,
 		&row.CreatedAt, &row.UpdatedAt)
 	return row, err

@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // Reader is the subset of segmentio/kafka-go's Reader the worker needs: manual
@@ -166,6 +168,7 @@ func (w *Worker) process(ctx context.Context, l lane, m kafka.Message) {
 		w.commit(ctx, l, m) // undecodable: advance offset, the row (if any) is recovered by rescan
 		return
 	}
+	ctx = extractTrace(ctx, m.Headers)
 	if err := w.dispatch.handle(ctx, id); err != nil {
 		if ctx.Err() != nil {
 			return
@@ -175,6 +178,17 @@ func (w *Worker) process(ctx context.Context, l lane, m kafka.Message) {
 		return
 	}
 	w.commit(ctx, l, m)
+}
+
+// extractTrace rebuilds the upstream span context from the message's traceparent
+// header so dispatch.handle starts a child of the originating API request span.
+// Rescan-driven deliveries carry no headers and fall back to a fresh root span.
+func extractTrace(ctx context.Context, headers []kafka.Header) context.Context {
+	carrier := propagation.MapCarrier{}
+	for _, h := range headers {
+		carrier[h.Key] = string(h.Value)
+	}
+	return otel.GetTextMapPropagator().Extract(ctx, carrier)
 }
 
 func (w *Worker) commit(ctx context.Context, l lane, m kafka.Message) {

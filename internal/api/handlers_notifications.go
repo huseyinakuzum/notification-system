@@ -81,6 +81,7 @@ func (s *Server) createNotifications(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	batchID := uuid.New()
+	tp := traceParent(ctx)
 	rows := make([]models.Notification, len(items))
 	for i, it := range items {
 		if it.TemplateID != nil {
@@ -124,6 +125,7 @@ func (s *Server) createNotifications(w http.ResponseWriter, r *http.Request) {
 			Priority:       priority,
 			IdempotencyKey: deriveIdempotencyKey(it.Recipient, it.Channel, it.Content, priority, it.ScheduledAt),
 			CorrelationID:  correlation,
+			TraceParent:    tp,
 			Status:         models.StatusScheduled,
 		}
 		if it.ScheduledAt != nil {

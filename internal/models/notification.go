@@ -17,6 +17,7 @@ type Notification struct {
 	Priority          Priority
 	IdempotencyKey    string
 	CorrelationID     string
+	TraceParent       string
 	Status            Status
 	Attempts          int
 	MaxAttempts       int

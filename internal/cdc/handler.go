@@ -99,9 +99,14 @@ func coerceString(v any) string {
 }
 
 func traceHeaders(row map[string]any) []gokafka.Header {
-	corr := coerceString(row["correlation_id"])
-	if corr == "" {
-		return nil
+	var headers []gokafka.Header
+	if corr := coerceString(row["correlation_id"]); corr != "" {
+		headers = append(headers, gokafka.Header{Key: "correlation_id", Value: []byte(corr)})
 	}
-	return []gokafka.Header{{Key: "correlation_id", Value: []byte(corr)}}
+	// Forward the originating W3C traceparent so the delivery worker re-parents
+	// its span onto the API request span instead of starting a new root.
+	if tp := coerceString(row["traceparent"]); tp != "" {
+		headers = append(headers, gokafka.Header{Key: "traceparent", Value: []byte(tp)})
+	}
+	return headers
 }
